@@ -2,14 +2,17 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import {
   AUTH_COOKIE_NAME,
+  AUTH_SCOPE_COOKIE,
+  AUTH_SCOPE_VALUE,
   AUTH_STUDENT_COOKIE,
-  getAuthCookieOptions,
 } from '@/lib/constants';
 import { Role } from '@/types';
-import { fetchSharedMainSession } from '@/lib/shared-main-session';
 
 const normalizeStudentId = (value: unknown) =>
   typeof value === 'string' ? value.trim().slice(0, 120) : '';
+
+const normalizeRole = (value: unknown): Role | null =>
+  value === 'ADMIN' || value === 'STUDENT' ? value : null;
 
 const normalizeCallbackPath = (value: string | null) => {
   const callback = (value || '').trim();
@@ -33,56 +36,20 @@ function resolveLoginRedirectPath(role: Role, callbackPath: string) {
 }
 
 export async function middleware(request: NextRequest) {
-  let role: Role | null = null;
-  const fallbackStudentId = normalizeStudentId(request.cookies.get(AUTH_STUDENT_COOKIE)?.value);
-  let syncedRole: Role | null = null;
-  let syncedStudentId = '';
-
-  const sharedSession = await fetchSharedMainSession({
-    cookieHeader: request.headers.get('cookie') || '',
-    hostname: request.nextUrl.hostname,
-    requestHost: request.nextUrl.host,
-  });
-
-  if (sharedSession?.role) {
-    syncedRole = sharedSession.role;
-    role = sharedSession.role;
-    syncedStudentId =
-      sharedSession.role === 'STUDENT'
-        ? normalizeStudentId(sharedSession.studentId) || fallbackStudentId
-        : '';
-  }
+  const authScope = (request.cookies.get(AUTH_SCOPE_COOKIE)?.value || '').trim();
+  const hasLocalScope = authScope === AUTH_SCOPE_VALUE;
+  const cookieRole = normalizeRole(request.cookies.get(AUTH_COOKIE_NAME)?.value);
+  const studentId = normalizeStudentId(request.cookies.get(AUTH_STUDENT_COOKIE)?.value);
+  const role = hasLocalScope && !(cookieRole === 'STUDENT' && !studentId) ? cookieRole : null;
 
   const path = request.nextUrl.pathname;
-  const cookieOptions = getAuthCookieOptions();
-
-  const withSyncedCookies = (response: NextResponse) => {
-    if (!syncedRole) {
-      response.cookies.set(AUTH_COOKIE_NAME, '', { ...cookieOptions, maxAge: 0 });
-      response.cookies.set(AUTH_STUDENT_COOKIE, '', { ...cookieOptions, maxAge: 0 });
-      return response;
-    }
-
-    response.cookies.set(AUTH_COOKIE_NAME, syncedRole, cookieOptions);
-    if (syncedRole === 'STUDENT') {
-      if (syncedStudentId) {
-        response.cookies.set(AUTH_STUDENT_COOKIE, syncedStudentId, cookieOptions);
-      } else {
-        response.cookies.set(AUTH_STUDENT_COOKIE, '', { ...cookieOptions, maxAge: 0 });
-      }
-    } else {
-      response.cookies.set(AUTH_STUDENT_COOKIE, '', { ...cookieOptions, maxAge: 0 });
-    }
-
-    return response;
-  };
 
   if (path.startsWith('/admin')) {
     if (role !== 'ADMIN') {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('callbackUrl', `${path}${request.nextUrl.search}`);
-      return withSyncedCookies(NextResponse.redirect(url));
+      return NextResponse.redirect(url);
     }
   }
 
@@ -91,7 +58,7 @@ export async function middleware(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       url.searchParams.set('callbackUrl', `${path}${request.nextUrl.search}`);
-      return withSyncedCookies(NextResponse.redirect(url));
+      return NextResponse.redirect(url);
     }
   }
 
@@ -102,10 +69,10 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = targetUrl.pathname;
     url.search = targetUrl.search;
-    return withSyncedCookies(NextResponse.redirect(url));
+    return NextResponse.redirect(url);
   }
 
-  return withSyncedCookies(NextResponse.next());
+  return NextResponse.next();
 }
 
 export const config = {

@@ -1,8 +1,9 @@
 export const AUTH_COOKIE_NAME = 'tms_role';
 export const AUTH_STUDENT_COOKIE = 'tms_student_id';
+export const AUTH_SCOPE_COOKIE = 'tms_auth_scope';
+export const AUTH_SCOPE_VALUE = 'local';
 
-const authCookieDomain =
-  (process.env.TMS_COOKIE_DOMAIN || process.env.SESSION_COOKIE_DOMAIN || '').trim();
+const authCookieDomain = (process.env.TMS_COOKIE_DOMAIN || '').trim();
 
 export function getAuthCookieOptions() {
   return {

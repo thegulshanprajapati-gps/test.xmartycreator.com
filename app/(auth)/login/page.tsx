@@ -1,73 +1,164 @@
-﻿'use client';
+'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/store/auth-store';
 import { useToastStore } from '@/store/toast-store';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import * as authService from '@/services/auth-service';
+import { Role } from '@/types';
 
-const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
-
-const isLiveMode = () => {
-  const raw = (process.env.NEXT_PUBLIC_IS_LIVE || '').trim().toLowerCase();
-  if (raw === 'true') return true;
-  if (raw === 'false') return false;
-  return process.env.NODE_ENV === 'production';
+type LoginForm = {
+  email: string;
+  password: string;
+  mobile: string;
+  termsAccepted: boolean;
 };
 
-const resolveMainProjectBaseUrl = () => {
-  const liveBase = trimTrailingSlash(
-    process.env.NEXT_PUBLIC_MAIN_SITE_URL || 'https://xmartycreator.com'
-  );
-  const localBase = trimTrailingSlash(
-    process.env.NEXT_PUBLIC_MAIN_SITE_LOCAL_URL || 'http://localhost:3000'
-  );
-  return isLiveMode() ? liveBase : localBase;
+const normalizeCallbackPath = (value: string | null) => {
+  const callback = (value || '').trim();
+  if (!callback.startsWith('/')) return '';
+  if (callback.startsWith('//')) return '';
+  return callback;
 };
 
-export default function LoginPage() {
+function resolvePostLoginPath(role: Role, callbackPath: string) {
+  const defaultPath = role === 'ADMIN' ? '/admin/dashboard' : '/student/dashboard';
+  if (!callbackPath) return defaultPath;
+
+  if (role === 'ADMIN' && callbackPath.startsWith('/admin')) return callbackPath;
+  if (role === 'STUDENT' && callbackPath.startsWith('/student')) return callbackPath;
+  return defaultPath;
+}
+
+function readOrCreateDeviceSeed() {
+  if (typeof window === 'undefined') return '';
+  const storageKey = 'tms_device_seed';
+  const existing = (window.localStorage.getItem(storageKey) || '').trim();
+  if (existing) return existing;
+  const created =
+    typeof window.crypto?.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(storageKey, created);
+  return created;
+}
+
+function createFingerprint() {
+  if (typeof window === 'undefined') return '';
+  const seed = readOrCreateDeviceSeed();
+  const nav = window.navigator;
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+  return [
+    seed,
+    nav.userAgent || 'ua',
+    nav.language || 'lang',
+    nav.platform || 'platform',
+    String(window.screen?.width || 0),
+    String(window.screen?.height || 0),
+    tz,
+  ]
+    .join('|')
+    .slice(0, 600);
+}
+
+function LoginPageContent() {
   const router = useRouter();
-  const logout = useAuthStore((state) => state.logout);
+  const searchParams = useSearchParams();
   const hydrate = useAuthStore((state) => state.hydrate);
   const user = useAuthStore((state) => state.user);
   const role = useAuthStore((state) => state.role);
   const loading = useAuthStore((state) => state.loading);
   const pushToast = useToastStore((state) => state.push);
-  const redirectedRef = useRef(false);
-  const [mainLoginUrl, setMainLoginUrl] = useState('');
+
+  const [form, setForm] = useState<LoginForm>({
+    email: '',
+    password: '',
+    mobile: '',
+    termsAccepted: false,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+  const [fingerprint, setFingerprint] = useState('');
+
+  const callbackPath = normalizeCallbackPath(searchParams.get('callbackUrl'));
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
   useEffect(() => {
-    if (loading || role || user) return;
-    if (typeof window === 'undefined') return;
+    setFingerprint(createFingerprint());
+  }, []);
 
-    const currentSearch = new URLSearchParams(window.location.search);
-    const callbackParam = (currentSearch.get('callbackUrl') || '').trim();
-    const callbackTarget =
-      callbackParam && callbackParam.startsWith('/')
-        ? `${window.location.origin}${callbackParam}`
-        : `${window.location.origin}${window.location.pathname}${window.location.search}`;
+  useEffect(() => {
+    if (loading || !role || !user) return;
+    router.replace(resolvePostLoginPath(role, callbackPath));
+  }, [loading, role, user, router, callbackPath]);
 
-    const mainBase = resolveMainProjectBaseUrl();
-    const url = new URL('/login', `${mainBase}/`);
-    url.searchParams.set('callbackUrl', callbackTarget);
+  const canSubmit = useMemo(() => !loading && !submitting, [loading, submitting]);
 
-    const targetUrl = url.toString();
-    setMainLoginUrl(targetUrl);
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage('');
 
-    if (!redirectedRef.current) {
-      redirectedRef.current = true;
-      window.location.assign(targetUrl);
+    const email = form.email.trim().toLowerCase();
+    const password = form.password;
+    const mobile = form.mobile.trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setMessage('Valid email enter karo.');
+      return;
     }
-  }, [loading, role, user]);
+    if (password.length < 8) {
+      setMessage('Password minimum 8 characters hona chahiye.');
+      return;
+    }
+    if (!/^\d{10}$/.test(mobile)) {
+      setMessage('Mobile number exactly 10 digits hona chahiye.');
+      return;
+    }
+    if (!form.termsAccepted) {
+      setMessage('Terms & Conditions accept karo.');
+      return;
+    }
+    if (!fingerprint) {
+      setMessage('Device fingerprint ready nahi hai. Page refresh karo.');
+      return;
+    }
 
-  const roleLabel = role === 'ADMIN' ? 'Admin' : 'Student';
-  const targetPath = role === 'ADMIN' ? '/admin/dashboard' : '/student/dashboard';
+    setSubmitting(true);
+    try {
+      const result = await authService.login({
+        email,
+        password,
+        mobile,
+        fingerprint,
+        termsAccepted: true,
+      });
+
+      if (!result.ok) {
+        setMessage(result.msg || 'Login failed.');
+        pushToast({
+          kind: 'error',
+          title: 'Login failed',
+          description: result.msg || 'Credentials verify nahi hue.',
+        });
+        return;
+      }
+
+      await hydrate();
+      pushToast({ kind: 'success', title: 'Login successful' });
+      router.replace(resolvePostLoginPath('STUDENT', callbackPath));
+    } catch {
+      setMessage('Unexpected error. Dobara try karo.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
@@ -84,75 +175,97 @@ export default function LoginPage() {
             </p>
             <h1 className="mt-1 text-2xl font-bold text-slate-900">Test Management Login</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Main app session fetch + role based access control.
+              Domain-specific login. Session main domain se share nahi hota.
             </p>
           </div>
 
-          {loading ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              Fetching session from main project...
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <div>
+              <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                value={form.email}
+                onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+                placeholder="student@example.com"
+                autoComplete="email"
+                required
+              />
             </div>
-          ) : user && role ? (
-            <div className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4">
-              <p className="text-sm font-semibold text-emerald-800">
-                Active session found. Continue to Test Management.
-              </p>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-emerald-700/90">Role</p>
-                <p className="text-sm font-medium text-emerald-900">{roleLabel}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-emerald-700/90">Name</p>
-                <p className="text-sm font-medium text-emerald-900">{user.name}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-emerald-700/90">Email</p>
-                <p className="text-sm font-medium text-emerald-900">{user.email}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Button type="button" onClick={() => router.push(targetPath)}>
-                  Continue as {roleLabel}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={async () => {
-                    await logout();
-                    pushToast({ kind: 'info', title: 'Session cleared' });
-                  }}
-                >
-                  Clear Session
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <div className="text-xs text-amber-900">
-                No shared session found. Redirecting to main project login UI...
-              </div>
-              <div className="text-xs text-amber-800/90">
-                Note: shared session works only when both apps use the same domain context.
-              </div>
-              <Button
-                type="button"
-                className="w-full"
-                onClick={() => {
-                  if (!mainLoginUrl) return;
-                  window.location.assign(mainLoginUrl);
-                }}
-                disabled={!mainLoginUrl}
-              >
-                Open Main Login
-              </Button>
-            </div>
-          )}
 
-          <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
-            Admin route: <code>/admin/*</code> | Student route: <code>/student/*</code>
-          </div>
+            <div>
+              <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                value={form.password}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, password: event.target.value }))
+                }
+                placeholder="Password"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="mobile" className="mb-1 block text-sm font-medium text-slate-700">
+                Mobile Number
+              </label>
+              <Input
+                id="mobile"
+                type="tel"
+                value={form.mobile}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    mobile: event.target.value.replace(/\D/g, '').slice(0, 10),
+                  }))
+                }
+                placeholder="10 digit mobile"
+                autoComplete="tel"
+                inputMode="numeric"
+                maxLength={10}
+                required
+              />
+            </div>
+
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.termsAccepted}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, termsAccepted: event.target.checked }))
+                }
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>I accept the Terms & Conditions</span>
+            </label>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              {fingerprint ? 'Device fingerprint ready.' : 'Preparing device fingerprint...'}
+            </div>
+
+            {message ? <p className="text-sm text-red-600">{message}</p> : null}
+
+            <Button type="submit" className="w-full" disabled={!canSubmit}>
+              {submitting ? 'Logging in...' : 'Login'}
+            </Button>
+          </form>
         </Card>
       </motion.div>
     </main>
   );
 }
 
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
