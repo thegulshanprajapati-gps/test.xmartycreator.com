@@ -1,18 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import {
-  AUTH_COOKIE_NAME,
-  AUTH_SCOPE_COOKIE,
-  AUTH_SCOPE_VALUE,
-  AUTH_STUDENT_COOKIE,
-} from '@/lib/constants';
+import { fetchSharedMainSession, resolveMainSiteBaseUrl } from '@/lib/shared-main-session';
 import { Role } from '@/types';
 
 const normalizeStudentId = (value: unknown) =>
   typeof value === 'string' ? value.trim().slice(0, 120) : '';
-
-const normalizeRole = (value: unknown): Role | null =>
-  value === 'ADMIN' || value === 'STUDENT' ? value : null;
 
 const normalizeCallbackPath = (value: string | null) => {
   const callback = (value || '').trim();
@@ -35,41 +27,69 @@ function resolveLoginRedirectPath(role: Role, callbackPath: string) {
   return defaultPath;
 }
 
-export async function middleware(request: NextRequest) {
-  const authScope = (request.cookies.get(AUTH_SCOPE_COOKIE)?.value || '').trim();
-  const hasLocalScope = authScope === AUTH_SCOPE_VALUE;
-  const cookieRole = normalizeRole(request.cookies.get(AUTH_COOKIE_NAME)?.value);
-  const studentId = normalizeStudentId(request.cookies.get(AUTH_STUDENT_COOKIE)?.value);
-  const role = hasLocalScope && !(cookieRole === 'STUDENT' && !studentId) ? cookieRole : null;
+async function resolveRole(request: NextRequest): Promise<Role | null> {
+  const requestHost =
+    (request.headers.get('x-forwarded-host') || request.headers.get('host') || '').trim() ||
+    request.nextUrl.host;
+  const sharedSession = await fetchSharedMainSession({
+    cookieHeader: request.headers.get('cookie') || '',
+    hostname: request.nextUrl.hostname,
+    requestHost,
+  });
+  if (!sharedSession) return null;
+  if (sharedSession.role === 'ADMIN') return 'ADMIN';
+  const studentId = normalizeStudentId(sharedSession.studentId || sharedSession.studentEmail);
+  return studentId ? 'STUDENT' : null;
+}
 
+function resolveMainLoginUrl(request: NextRequest) {
+  try {
+    const mainBaseUrl = resolveMainSiteBaseUrl(request.nextUrl.hostname);
+    const loginUrl = new URL('/login', mainBaseUrl);
+    const currentHost = request.nextUrl.host.trim().toLowerCase();
+    const targetHost = loginUrl.host.trim().toLowerCase();
+    if (currentHost && targetHost && currentHost === targetHost) {
+      const fallback = request.nextUrl.clone();
+      fallback.pathname = '/';
+      fallback.search = '';
+      return fallback;
+    }
+    return loginUrl;
+  } catch {
+    const fallback = request.nextUrl.clone();
+    fallback.pathname = '/';
+    fallback.search = '';
+    return fallback;
+  }
+}
+
+export async function middleware(request: NextRequest) {
+  const role = await resolveRole(request);
   const path = request.nextUrl.pathname;
 
   if (path.startsWith('/admin')) {
     if (role !== 'ADMIN') {
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      url.searchParams.set('callbackUrl', `${path}${request.nextUrl.search}`);
-      return NextResponse.redirect(url);
+      return NextResponse.redirect(resolveMainLoginUrl(request));
     }
   }
 
   if (path.startsWith('/student')) {
     if (role !== 'STUDENT') {
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      url.searchParams.set('callbackUrl', `${path}${request.nextUrl.search}`);
-      return NextResponse.redirect(url);
+      return NextResponse.redirect(resolveMainLoginUrl(request));
     }
   }
 
-  if (path === '/login' && (role === 'ADMIN' || role === 'STUDENT')) {
-    const callbackPath = normalizeCallbackPath(request.nextUrl.searchParams.get('callbackUrl'));
-    const targetPath = resolveLoginRedirectPath(role, callbackPath);
-    const targetUrl = new URL(targetPath, request.nextUrl.origin);
-    const url = request.nextUrl.clone();
-    url.pathname = targetUrl.pathname;
-    url.search = targetUrl.search;
-    return NextResponse.redirect(url);
+  if (path === '/login') {
+    if (role === 'ADMIN' || role === 'STUDENT') {
+      const callbackPath = normalizeCallbackPath(request.nextUrl.searchParams.get('callbackUrl'));
+      const targetPath = resolveLoginRedirectPath(role, callbackPath);
+      const targetUrl = new URL(targetPath, request.nextUrl.origin);
+      const url = request.nextUrl.clone();
+      url.pathname = targetUrl.pathname;
+      url.search = targetUrl.search;
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.redirect(resolveMainLoginUrl(request));
   }
 
   return NextResponse.next();

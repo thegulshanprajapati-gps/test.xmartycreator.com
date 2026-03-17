@@ -7,12 +7,13 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 
 const styles: Record<Variant, string> = {
   primary:
-    'bg-primary text-primary-foreground hover:bg-blue-500 shadow-glass',
+    'bg-primary text-primary-foreground hover:bg-indigo-500 shadow-glass dark:hover:bg-indigo-400',
   secondary:
-    'bg-secondary text-secondary-foreground hover:bg-cyan-500 shadow-glass',
-  ghost: 'bg-transparent text-foreground hover:bg-slate-100',
-  danger: 'bg-danger text-white hover:bg-red-500',
-  outline: 'border border-slate-300 bg-white text-foreground hover:bg-slate-50',
+    'bg-secondary text-secondary-foreground hover:bg-cyan-500 shadow-glass dark:hover:bg-cyan-400',
+  ghost: 'bg-transparent text-foreground hover:bg-slate-100 dark:hover:bg-slate-800',
+  danger: 'bg-danger text-white hover:bg-red-500 dark:hover:bg-red-400',
+  outline:
+    'border border-border bg-white text-foreground hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800',
 };
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {

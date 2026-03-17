@@ -15,7 +15,7 @@ type Props = {
 
 export function Tabs({ tabs, value, onChange }: Props) {
   return (
-    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+    <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800">
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -23,8 +23,8 @@ export function Tabs({ tabs, value, onChange }: Props) {
           className={cn(
             'rounded-lg px-3 py-1.5 text-sm font-medium transition',
             value === tab.id
-              ? 'bg-white text-slate-900 shadow-sm'
-              : 'text-slate-500 hover:text-slate-800'
+              ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-slate-100'
+              : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
           )}
         >
           {tab.label}

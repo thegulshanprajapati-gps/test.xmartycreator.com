@@ -59,16 +59,16 @@ export function DataTable<T>({
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50">
+          <thead className="bg-slate-50 dark:bg-slate-800">
             <tr>
               {columns.map((column) => (
                 <th
                   key={column.key}
                   className={cn(
-                    'whitespace-nowrap px-4 py-3 text-left font-semibold text-slate-700',
+                    'whitespace-nowrap px-4 py-3 text-left font-semibold text-slate-700 dark:text-slate-200',
                     column.className
                   )}
                 >
@@ -97,7 +97,7 @@ export function DataTable<T>({
             {pageRows.length === 0 ? (
               <tr>
                 <td
-                  className="px-4 py-6 text-center text-slate-500"
+                  className="px-4 py-6 text-center text-slate-500 dark:text-slate-400"
                   colSpan={columns.length}
                 >
                   {emptyText}
@@ -105,11 +105,11 @@ export function DataTable<T>({
               </tr>
             ) : (
               pageRows.map((row, index) => (
-                <tr key={index} className="border-t border-slate-100">
+                <tr key={index} className="border-t border-slate-100 dark:border-slate-800">
                   {columns.map((column) => (
                     <td
                       key={column.key}
-                      className={cn('px-4 py-3 text-slate-700', column.className)}
+                      className={cn('px-4 py-3 text-slate-700 dark:text-slate-200', column.className)}
                     >
                       {column.render(row)}
                     </td>
@@ -121,8 +121,8 @@ export function DataTable<T>({
         </table>
       </div>
 
-      <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
-        <p className="text-xs text-slate-500">
+      <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 dark:border-slate-800">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           Showing {sorted.length === 0 ? 0 : start + 1}-{Math.min(start + pageSize, sorted.length)} of{' '}
           {sorted.length}
         </p>
@@ -135,7 +135,7 @@ export function DataTable<T>({
           >
             Prev
           </Button>
-          <span className="text-xs text-slate-600">
+          <span className="text-xs text-slate-600 dark:text-slate-300">
             {currentPage}/{pages}
           </span>
           <Button

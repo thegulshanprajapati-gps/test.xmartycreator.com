@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Menu, Search, X } from 'lucide-react';
+import { Menu, MoonStar, Search, Sun, X } from 'lucide-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { ADMIN_NAV_ITEMS } from '@/lib/constants';
 import { cn } from '@/utils/helpers';
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { globalAdminSearch } from '@/services/search-service';
 import { useAuthStore } from '@/store/auth-store';
+import { useThemeStore } from '@/store/theme-store';
 import { useToastStore } from '@/store/toast-store';
 
 type SearchItem = {
@@ -47,6 +48,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const [searching, setSearching] = useState(false);
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const theme = useThemeStore((state) => state.theme);
+  const toggleTheme = useThemeStore((state) => state.toggleTheme);
   const pushToast = useToastStore((state) => state.push);
 
   useEffect(() => {
@@ -85,10 +88,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950/40">
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-200 bg-white p-4 transition-transform lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-200 bg-white p-4 transition-transform dark:border-slate-700 dark:bg-slate-900 lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -97,9 +100,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">
               Test Management
             </p>
-            <h2 className="text-lg font-bold text-slate-900">Admin Panel</h2>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Admin Panel</h2>
           </div>
-          <button onClick={() => setOpen(false)} className="lg:hidden">
+          <button onClick={() => setOpen(false)} className="dark:text-slate-200 lg:hidden">
             <X size={18} />
           </button>
         </div>
@@ -113,7 +116,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 'block rounded-xl px-3 py-2 text-sm font-medium transition',
                 pathname === item.href || pathname.startsWith(`${item.href}/`)
                   ? 'bg-blue-600 text-white shadow-glass'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'
               )}
               onClick={() => setOpen(false)}
             >
@@ -124,17 +127,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-700 dark:bg-slate-900/85">
           <div className="flex items-center gap-3 px-4 py-3 lg:px-6">
             <button
-              className="rounded-lg border border-slate-200 p-2 lg:hidden"
+              className="rounded-lg border border-slate-200 p-2 dark:border-slate-700 dark:text-slate-200 lg:hidden"
               onClick={() => setOpen(true)}
             >
               <Menu size={16} />
             </button>
 
             <form className="relative flex-1" onSubmit={onSearch}>
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16} />
               <Input
                 placeholder="Search students, tests, questions..."
                 className="pl-9"
@@ -142,11 +145,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 onChange={(event) => setQuery(event.target.value)}
               />
               {query ? (
-                <div className="absolute top-11 z-40 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                <div className="absolute top-11 z-40 w-full rounded-xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                   {searching ? (
-                    <p className="px-2 py-2 text-xs text-slate-500">Searching...</p>
+                    <p className="px-2 py-2 text-xs text-slate-500 dark:text-slate-400">Searching...</p>
                   ) : searchItems.length === 0 ? (
-                    <p className="px-2 py-2 text-xs text-slate-500">No matches found.</p>
+                    <p className="px-2 py-2 text-xs text-slate-500 dark:text-slate-400">No matches found.</p>
                   ) : (
                     searchItems.map((item) => (
                       <button
@@ -156,10 +159,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                           setQuery('');
                           setSearchItems([]);
                         }}
-                        className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-50"
+                        className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <span className="truncate">{item.label}</span>
-                        <span className="text-xs text-slate-400">{item.type}</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">{item.type}</span>
                       </button>
                     ))
                   )}
@@ -169,9 +172,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
             <div className="flex items-center gap-3">
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-slate-900">{user?.name ?? 'Admin'}</p>
-                <p className="text-xs text-slate-500">Administrator</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{user?.name ?? 'Admin'}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Administrator</p>
               </div>
+              <button
+                onClick={toggleTheme}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
+                {theme === 'dark' ? <Sun size={13} /> : <MoonStar size={13} />}
+                {theme === 'dark' ? 'Light' : 'Dark'}
+              </button>
               <Button variant="outline" onClick={onLogout}>
                 Logout
               </Button>

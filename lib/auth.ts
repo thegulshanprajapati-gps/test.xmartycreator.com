@@ -1,43 +1,64 @@
-import { cookies } from 'next/headers';
+import { headers } from 'next/headers';
 import { AuthUser, Role } from '@/types';
-import {
-  AUTH_COOKIE_NAME,
-  AUTH_SCOPE_COOKIE,
-  AUTH_SCOPE_VALUE,
-  AUTH_STUDENT_COOKIE,
-} from './constants';
+import { fetchSharedMainSession } from './shared-main-session';
 
 const sanitizeStudentId = (value: unknown) =>
   typeof value === 'string' ? value.trim().toLowerCase().slice(0, 120) : '';
 
+const sanitizeEmail = (value: unknown) =>
+  typeof value === 'string' ? value.trim().toLowerCase().slice(0, 320) : '';
+
 const sanitizeText = (value: unknown, max = 240) =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
-
-const normalizeRole = (value: unknown): Role | null =>
-  value === 'ADMIN' || value === 'STUDENT' ? value : null;
 
 type ResolvedAuthState = {
   role: Role | null;
   studentId: string | null;
+  email: string;
+  name: string;
 };
 
 async function resolveAuthState(): Promise<ResolvedAuthState> {
-  const cookieStore = await cookies();
-  const scope = (cookieStore.get(AUTH_SCOPE_COOKIE)?.value || '').trim();
-  const role = normalizeRole(cookieStore.get(AUTH_COOKIE_NAME)?.value);
-  const studentId = sanitizeStudentId(cookieStore.get(AUTH_STUDENT_COOKIE)?.value);
+  const headerStore = await headers();
+  const cookieHeader = sanitizeText(headerStore.get('cookie'), 5000);
+  const requestHost = sanitizeText(
+    headerStore.get('x-forwarded-host') || headerStore.get('host'),
+    260
+  ).toLowerCase();
 
-  if (!role || scope !== AUTH_SCOPE_VALUE) {
-    return { role: null, studentId: null };
+  const sharedSession = await fetchSharedMainSession({
+    cookieHeader,
+    hostname: requestHost,
+    requestHost,
+  });
+
+  if (!sharedSession) {
+    return { role: null, studentId: null, email: '', name: '' };
   }
 
-  if (role === 'STUDENT' && !studentId) {
-    return { role: null, studentId: null };
+  if (sharedSession.role === 'ADMIN') {
+    return {
+      role: 'ADMIN',
+      studentId: null,
+      email: '',
+      name: sanitizeText(sharedSession.adminUsername, 120) || 'Admin',
+    };
   }
+
+  const studentId = sanitizeStudentId(sharedSession.studentId || sharedSession.studentEmail);
+  const email = sanitizeEmail(sharedSession.studentEmail || studentId);
+  if (!studentId && !email) {
+    return { role: null, studentId: null, email: '', name: '' };
+  }
+
+  const fallbackName =
+    email && email.includes('@') ? sanitizeText(email.split('@')[0], 120) : 'Student';
 
   return {
-    role,
-    studentId: role === 'STUDENT' ? studentId : null,
+    role: 'STUDENT',
+    studentId: studentId || email,
+    email,
+    name: sanitizeText(sharedSession.studentName, 120) || fallbackName || 'Student',
   };
 }
 
@@ -58,25 +79,26 @@ export async function getServerAuthUser(): Promise<AuthUser | null> {
 
   if (role === 'ADMIN') {
     return {
-      id: 'admin:local',
-      name: 'Admin',
+      id: 'admin:shared',
+      name: authState.name || 'Admin',
       role: 'ADMIN',
       email: '',
     };
   }
 
   const studentId = sanitizeStudentId(authState.studentId);
-  const email = studentId.includes('@') ? studentId : '';
-  const fallbackName = email ? email.split('@')[0] : 'Student';
-  const name = sanitizeText(fallbackName, 120) || 'Student';
-  const id = studentId ? `student:${studentId}` : 'student:local';
+  const email = sanitizeEmail(authState.email || studentId);
+  const fallbackName = email && email.includes('@') ? email.split('@')[0] : 'Student';
+  const name = sanitizeText(authState.name || fallbackName, 120) || 'Student';
+  const canonicalId = studentId || email;
+  const id = canonicalId ? `student:${canonicalId}` : 'student:shared';
 
   return {
     id,
     name,
     role: 'STUDENT',
     email,
-    studentId: studentId || undefined,
+    studentId: canonicalId || undefined,
   };
 }
 
